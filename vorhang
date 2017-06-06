@@ -1,0 +1,36 @@
+#!/bin/bash
+#
+# license: wtfpl_v2
+#
+
+SERVER=192.168.1.8
+PORT=7877
+
+while [ a"$1" != a"" ]; do
+	case "$1" in
+	auf)
+		ACTION="open"
+		TIME="$2"
+		shift 2
+		;;
+	zu)
+		ACTION="close"
+		TIME="$2"
+		shift 2
+		;;
+	vauf)
+		ACTION="fullopen"
+		shift
+		;;
+	vzu)
+		ACTION="fullclose"
+		shift
+		;;
+	*)
+		echo "wat"
+		exit 1
+		;;
+	esac
+done
+
+echo "$ACTION $TIME" | nc -q 0 $SERVER $PORT # without -q 0 netcat doesn't terminate

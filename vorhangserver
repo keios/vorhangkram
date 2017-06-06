@@ -1,0 +1,94 @@
+#!/bin/bash
+# vorhangserver
+# license: wtfpl_v2
+#
+#====== CONSTANTS
+
+PORT=7877 # local port
+FIFO=".vorhang"
+GPIO="/sys/class/gpio"
+ROT="17"  # this rotates motor
+REV="18"  # this reverses direction
+MTIME=6000 # maximum curtain opening time in ms
+
+#====== FUNCTIONS
+
+function _clean {
+echo "$ROT" > $GPIO/unexport
+echo "$REV" > $GPIO/unexport
+rm -f "$FIFO"
+killall -9 netcat
+exec 3<&- # reset fd3 redirection
+echo "cleanup done"
+exit 0
+}
+
+function _open {
+    if [ "$1" -le 0 ]; # time in ms must be given
+	then exit 1
+    fi 
+    echo "opening $1"
+    echo "1" > $GPIO/gpio$ROT/value #> /dev/null 2>&1 # motor on
+    nap "$1"
+    echo "0" > $GPIO/gpio$ROT/value #> /dev/null 2>&1 # motor off
+}
+
+function _close {
+    if [ "$1" -le 0 ]; # time in ms must be given
+	then exit 1
+    fi 
+    echo "closing $1"
+    echo "1" > $GPIO/gpio$REV/value #> /dev/null 2>&1 # reverse on
+    echo "1" > $GPIO/gpio$ROT/value #> /dev/null 2>&1 # motor on
+    nap "$1"
+    echo "0" > $GPIO/gpio$ROT/value #> /dev/null 2>&1 # motor off
+    echo "0" > $GPIO/gpio$REV/value #> /dev/null 2>&1 # reverse off
+}
+
+#====== INIT
+echo "set working pins"
+echo "$ROT" > $GPIO/export
+echo "$REV" > $GPIO/export
+
+echo "set pin direction"
+echo "out" > $GPIO/gpio$ROT/direction
+echo "out" > $GPIO/gpio$REV/direction
+
+echo "make fifo"
+mkfifo $FIFO
+
+# start netcat
+echo -n "start nc… "
+netcat -l -d -k -p $PORT > $FIFO &
+echo "done"
+
+trap _clean EXIT SIGHUP SIGINT SIGTERM
+
+echo "init done, listening"
+
+exec 3< $FIFO # redirect fifo to fd3
+#====== MAIN LOOP
+
+while :; do
+    if read -r -u 3 line; then
+	case $line in
+	open*)
+	    _open ${line##* }
+	;;
+	close*)
+	    _close ${line##* }
+	;;
+	fullopen)
+	    _open $MTIME
+	;;
+	fullclose)
+	    _close $MTIME
+	;;
+	shutdown)
+	    _clean
+	;;
+	*)
+	;;
+	esac
+    fi
+done
